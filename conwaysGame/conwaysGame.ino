@@ -13,7 +13,7 @@ int clockPin = 3;    // Green wire on Adafruit Pixels
 
 Adafruit_WS2801 strip = Adafruit_WS2801(200, dataPin, clockPin, WS2801_RGB, 18, 11);
 
-int cellState [11][18];
+uint8_t cellState [11][18];
 
 void setup() {
   
@@ -36,6 +36,7 @@ void setup() {
 
   // Update LED contents, to start they are all 'off'
   strip.show();
+  delay(WAIT);
 }
 
 void loop() {
@@ -54,40 +55,51 @@ void loop() {
       if (aliveNextIteration(i,j)) {
         cellState[i][j] |= 1; // append the int with a 1 at the end to represent alive cell
         // if not alive, the last bit will be left a 0
-        strip.spc(i, j, ALIVE);
-      }
-      else {
-        strip.spc(i, j, DEAD);
       }
     }
   }
+  
+  showCurrentState();
   
   strip.show();
   delay(WAIT);
 }
 
-int aliveNextIteration(int i, int j) {
+void showCurrentState() {
+   int i,j;
+  
+   for(i = 0; i < strip.h(); i++) {
+      for(j = 0; j < strip.w(); j++) {
+         if (cellState[i][j] % 2)
+           strip.spc(i,j,ALIVE);
+         else
+           strip.spc(i,j,DEAD);
+      } 
+   }
+}
+
+boolean aliveNextIteration(int i, int j) {
    int liveAdjCells = numberOfLiveAdjCells(i,j);
    if (cellAlive(i,j)) // check if cell is alive
-      return (ALIVE_LOWER <= liveAdjCells <= ALIVE_UPPER);
+      return ((ALIVE_LOWER <= liveAdjCells) && (liveAdjCells <= ALIVE_UPPER));
    else
       return (liveAdjCells == RESSURECT);
 }
 
 // Counts number of live neighbour cells
-int numberOfLiveAdjCells(int i, int j) {
+uint8_t numberOfLiveAdjCells(uint8_t i,uint8_t j) {
    // we mod in the event the cell goes beyond the edge, so the board 'wraps around'
-   return cellAlive((i-1) % strip.h(), (j-1) % strip.w()) + 
-          cellAlive((i-1) % strip.h(), (j) % strip.w()) + 
-          cellAlive((i-1) % strip.h(), (j+1) % strip.w()) + 
-          cellAlive((i) % strip.h(), (j-1) % strip.w()) + 
+   return cellAlive((strip.h() + i-1) % strip.h(), (strip.w() + j-1) % strip.w()) + // add a strip.h() for cases where i-1 < 0, same for strip.w() and j-1<0
+          cellAlive((strip.h() + i-1) % strip.h(), (j) % strip.w()) + 
+          cellAlive((strip.h() + i-1) % strip.h(), (j+1) % strip.w()) + 
+          cellAlive((i) % strip.h(), (strip.w() + j-1) % strip.w()) + 
           cellAlive((i) % strip.h(), (j+1) % strip.w()) + 
-          cellAlive((i+1) % strip.h(), (j-1) % strip.w()) + 
+          cellAlive((i+1) % strip.h(), (strip.w() + j-1) % strip.w()) + 
           cellAlive((i+1) % strip.h(), (j) % strip.w()) + 
           cellAlive((i+1) % strip.h(), (j+1) % strip.w());
 }
 
-// Checks second last bit if cell is alive
-int cellAlive(int i, int j) {
-   return ((cellState[i][j] << 6) >> 7);
+// Checks second last bit if cell is alive, returns 1 if true
+uint8_t cellAlive(uint8_t i,uint8_t j) {
+   return ((cellState[i][j] >> 1 ) % 2);
 }
