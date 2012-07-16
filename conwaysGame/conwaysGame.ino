@@ -70,7 +70,7 @@ void showCurrentState() {
   
    for(i = 0; i < strip.h(); i++) {
       for(j = 0; j < strip.w(); j++) {
-         if (cellState[i][j] % 2)
+         if ((cellState[i][j] % 2) > 0)
            strip.spc(i,j,ALIVE);
          else
            strip.spc(i,j,DEAD);
@@ -80,7 +80,7 @@ void showCurrentState() {
 
 boolean aliveNextIteration(int i, int j) {
    int liveAdjCells = numberOfLiveAdjCells(i,j);
-   if (cellAlive(i,j)) // check if cell is alive
+   if (cellAlive(i,j) > 0) // check if cell is alive
       return ((ALIVE_LOWER <= liveAdjCells) && (liveAdjCells <= ALIVE_UPPER));
    else
       return (liveAdjCells == RESSURECT);
