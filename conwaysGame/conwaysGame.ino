@@ -1,8 +1,8 @@
 #include "SPI.h"
 #include "Adafruit_WS2801.h"
 
-#define ALIVE 255 // Alive cell colour (blue)
-#define DEAD 16711680 // Dead cell colour (red)
+#define ALIVE 25 // Alive cell colour (blue)
+#define DEAD 1638400 // Dead cell colour (red)
 #define ALIVE_LOWER 2 // lower bound for # of adj cells required to stay alive
 #define ALIVE_UPPER 3 // upper bound for # of adj cells required to stay alive
 #define RESSURECT 3 // # of adj cells required to bring dead cell to live
@@ -28,14 +28,11 @@ void setup() {
     }
   }
 
-  cellState[0][0] = 1;
-  cellState[1][1] = 1;
-  cellState[1][2] = 1;
-  cellState[2][0] = 1;
-  cellState[2][1] = 1;
-
-  // Update LED contents, to start they are all 'off'
-  strip.show();
+  //Seed the random generator
+  randomSeed(analogRead(0));
+  randomizeBoard();
+  showCurrentState();
+  
   delay(WAIT);
 }
 
@@ -61,8 +58,11 @@ void loop() {
   
   showCurrentState();
   
-  strip.show();
   delay(WAIT);
+  
+  if (steadyState()) {
+     randomizeBoard(); 
+  }
 }
 
 void showCurrentState() {
@@ -76,6 +76,8 @@ void showCurrentState() {
            strip.spc(i,j,DEAD);
       } 
    }
+   
+   strip.show();
 }
 
 boolean aliveNextIteration(int i, int j) {
@@ -103,3 +105,40 @@ uint8_t numberOfLiveAdjCells(uint8_t i,uint8_t j) {
 uint8_t cellAlive(uint8_t i,uint8_t j) {
    return ((cellState[i][j] >> 1 ) % 2);
 }
+
+// Creates initial board configuration
+void randomizeBoard() {
+   int i;
+   int numberOfCells = random(10,100);
+   
+   for (i = 0; i < numberOfCells; i++) {
+      cellState[random(strip.h())][random(strip.w())] = 1;
+   }
+}
+
+// Checks if current game has reached a steady state
+boolean steadyState() {
+  int i;
+  boolean steady = false;
+  
+  for (i = 1; i < 8; i++) {
+     steady = steady || steadyWRTState(i);
+  }
+  
+  return steady;
+}
+
+// Checks if current game has reached a steady state with respect to n board states before the current one
+boolean steadyWRTState(int n) {
+  int i,j;
+  int steady = true;
+  
+  for (i = 0; i < strip.h(); i++) {
+     for (j = 0; j < strip.w(); j++) {
+        steady = steady && ((cellState[i][j] % 2) == ((cellState[i][j] >> n) % 2));
+     } 
+  }
+  
+  return steady;
+}
+ 
