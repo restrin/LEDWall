@@ -17,9 +17,9 @@ uint8_t cellState [11][18];
 
 void setup() {
   
-  int i,j;
-  
   strip.begin();
+  
+  int i,j;
 
   // set all of the cellState entries to 0
   for (i = 0; i < strip.h(); i++) {
@@ -37,7 +37,24 @@ void setup() {
 }
 
 void loop() {
-  // does one iteration of conway's game
+
+  conwaysGameIteration();
+  
+  delay(WAIT);
+  
+  if (steadyState()) {
+     int i;
+    
+     for (i = 0; i < 10; i++) {
+       conwaysGameIteration(); 
+     }
+    
+     randomizeBoard(); 
+  }
+}
+
+// does one iteration of conway's game
+void conwaysGameIteration() { 
   int i, j;
   
   // shift every int in array 1 bit left
@@ -57,12 +74,6 @@ void loop() {
   }
   
   showCurrentState();
-  
-  delay(WAIT);
-  
-  if (steadyState()) {
-     randomizeBoard(); 
-  }
 }
 
 void showCurrentState() {
@@ -141,4 +152,4 @@ boolean steadyWRTState(int n) {
   
   return steady;
 }
- 
+
