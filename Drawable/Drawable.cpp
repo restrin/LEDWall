@@ -4,7 +4,7 @@
 /**********************************************************************************/
 
 // Constructor with colour
-Drawable::Drawable(Adafruit_WS2801 board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h) {
+Drawable::Drawable(Adafruit_WS2801& board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h) {
 	strip = board;
 	basePoint[0] = yOff;
 	basePoint[1] = xOff;
@@ -54,13 +54,13 @@ void Drawable::spc(uint8_t i, uint8_t j, uint32_t c) {
 	}
 }
 // Draw the drawable onto the board
-// If transparent == true, then entries with colour 0 will not be drawn to the screen (so the object will be transparent where it is not coloured), else it will overwrite.
+// If transparent = true, then entries with colour 0 will not be drawn to the screen (so the object will be transparent where it is not coloured), else it will overwrite.
 void Drawable::draw(bool transparent) {
 	int i,j;
 	
 	for (i = 0; i < h(); i++) {
 		for (j = 0; j < w(); j++) {
-			if (transparent && boundingBox[i * w() + j] > 0) 
+			if (!transparent || boundingBox[i * w() + j] > 0) 
 				strip.spc(i + basePoint[0],j + basePoint[1], boundingBox[i * w() + j]); // Remember, we are using matrix subscript notation, so yOff first, then xOff
 		}
 	}

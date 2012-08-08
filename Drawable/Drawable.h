@@ -16,7 +16,7 @@ class Drawable {
 	public:
 
 		// Create drawable object, initialize upper left corner, bounding box and also pass the strip to which it will draw
-		Drawable(Adafruit_WS2801 board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h);
+		Drawable(Adafruit_WS2801& board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h);
 		// Release memory (as needed):
 		~Drawable();
 	
