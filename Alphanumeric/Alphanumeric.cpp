@@ -2,12 +2,21 @@
 #include "../Drawable/Drawable.h"
 #include "Alphanumeric.h"
 
-// Constructor for letter
+// Constructor for alphanumeric
 Alphanumeric::Alphanumeric(Adafruit_WS2801& board, char* l, uint8_t yOff, uint8_t xOff, uint32_t c) : Drawable(board, yOff, xOff, getBBWidth(l), getBBHeight(l)) {
 	int w = getBBWidth(l);
 	int h = getBBHeight(l);
+
+	int ASCIICode;
+	if ((int) l[0] >= 97) {
+		ASCIICode = 65 + ((((int) l[0]) - 65) % 32); // To deal with lower case letters, to convert them to upper case
+	}
+	else
+		ASCIICode = (int) l[0];
 	
-	switch((int) l[0]) {
+	// Here we define all of the different letters
+	// Every case is defined by the ASCII code for the letter/number (but capitals only)
+	switch(ASCIICode) {
 		case 65:
 			Drawable(board, yOff, xOff, w, h);
 			spc(0, 1, c);
@@ -34,9 +43,12 @@ Alphanumeric::Alphanumeric(Adafruit_WS2801& board, char* l, uint8_t yOff, uint8_
 			spc(4, 0, c);
 			spc(4, 1, c);
 			break;
+		// TODO FOR STEVEN: REST OF ALPHABET AND NUMBERS
 	}
 }
 
+// Destructor
+// Memory deallocation handled by base class destructor
 Alphanumeric::~Alphanumeric(void) {
 
 }
