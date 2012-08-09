@@ -192,11 +192,13 @@ void Adafruit_WS2801::setPixelColor(uint16_t n, uint32_t c) {
 
 // Set the colours of the pixels using grid coordinates
 void Adafruit_WS2801::spc(uint8_t i, uint8_t j, uint32_t c) {
-   if (i % 2 == 0) {
-     setPixelColor(w()*i + j, c);        
-   }
-   else {
-     setPixelColor(w()*i + ((w() - 1) - j), c);
+   if (0 <= i && i < h() && 0 <= j && j < w()) {
+		if (i % 2 == 0) {
+			setPixelColor(w()*i + j, c);        
+		}
+		else {
+			setPixelColor(w()*i + ((w() - 1) - j), c);
+		}
    }
 }
 
@@ -218,12 +220,13 @@ uint32_t Adafruit_WS2801::getPixelColor(uint16_t n) {
 
 // Query colour from previously-set pixel using grid coordinates (returns packed 32-bit RGB value)
 uint32_t Adafruit_WS2801::gpc(uint8_t i, uint8_t j) {
-  if (i % 2 == 0) {
-    getPixelColor(w() * i + j);
-  }
-  else {
-    getPixelColor(w() * i + ((w() - 1) - j));
-  }
+
+	if (i % 2 == 0) {
+		return getPixelColor(w() * i + j);
+	}
+	else {
+		return getPixelColor(w() * i + ((w() - 1) - j));
+	}
 }
 
 // Create a 24 bit color value from R,G,B

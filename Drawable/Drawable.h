@@ -44,6 +44,10 @@ class Drawable {
 		uint32_t
 			// Returns pixel color in (i,j)th coordinate of bounding box array
 			gpc(uint8_t i, uint8_t j);
+		static void
+			// Causes drawables to move across screen dy,dx for n iterations. dlen is length of array
+			// Takes in array of pointers to the drawable objects
+			crawl(Adafruit_WS2801& board, Drawable** d, int dlen, int dy, int dx, int n, int wait);
 			
 	private:
 			
