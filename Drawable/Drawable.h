@@ -16,7 +16,7 @@ class Drawable {
 	public:
 
 		// Create drawable object, initialize upper left corner, bounding box and also pass the strip to which it will draw
-		Drawable(Adafruit_WS2801& board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h);
+		Drawable(Adafruit_WS2801* board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h);
 		// Release memory (as needed):
 		~Drawable();
 	
@@ -47,7 +47,7 @@ class Drawable {
 		static void
 			// Causes drawables to move across screen dy,dx for n iterations. dlen is length of array
 			// Takes in array of pointers to the drawable objects
-			crawl(Adafruit_WS2801& board, Drawable** d, int dlen, int dy, int dx, int n, int wait);
+			crawl(Adafruit_WS2801* board, Drawable** d, int dlen, int dy, int dx, int n, int wait);
 			
 	private:
 			
@@ -55,7 +55,7 @@ class Drawable {
 			width,
 			height,
 			basePoint[2];
-		Adafruit_WS2801 
+		Adafruit_WS2801* 
 			strip;
 		uint32_t  
 			*boundingBox;

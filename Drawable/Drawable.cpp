@@ -5,7 +5,7 @@
 /**********************************************************************************/
 
 // Constructor with colour
-Drawable::Drawable(Adafruit_WS2801& board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h) {
+Drawable::Drawable(Adafruit_WS2801* board, uint8_t yOff, uint8_t xOff, uint8_t w, uint8_t h) {
 	strip = board;
 	basePoint[0] = yOff;
 	basePoint[1] = xOff;
@@ -63,7 +63,7 @@ void Drawable::draw(bool transparent) {
 	for (i = 0; i < h(); i++) {
 		for (j = 0; j < w(); j++) {
 			if (!transparent || boundingBox[i * w() + j] > 0) 
-				strip.spc(i + basePoint[0],j + basePoint[1], boundingBox[i * w() + j]); // Remember, we are using matrix subscript notation, so yOff first, then xOff
+				(*strip).spc(i + basePoint[0],j + basePoint[1], boundingBox[i * w() + j]); // Remember, we are using matrix subscript notation, so yOff first, then xOff
 		}
 	}
 }
@@ -86,28 +86,28 @@ uint32_t Drawable::gpc(uint8_t i, uint8_t j) {
 // Causes drawables to crawl across screen. Delay is in milliseconds.
 // NOTE: To work properly, board cannot already have any of the letters to be crawled drawn on it yet.
 //		 Every iteration it will redraw the 'original' board, and then draw the drawables being crawled.
-void Drawable::crawl(Adafruit_WS2801& board, Drawable** d, int dlen, int dy, int dx, int n, int wait) {
+void Drawable::crawl(Adafruit_WS2801* board, Drawable** d, int dlen, int dy, int dx, int n, int wait) {
 	int i,j,k,l;
 	
-	uint32_t* background = (uint32_t*) calloc(board.h() * board.w(), 4);
+	uint32_t* background = (uint32_t*) calloc((*board).h() * (*board).w(), 4);
 	
-	for (i = 0; i < board.h(); i++) {
-		for (j = 0; j < board.w(); j++) {
-			background[i*board.w() + j] = board.gpc(i,j);
+	for (i = 0; i < (*board).h(); i++) {
+		for (j = 0; j < (*board).w(); j++) {
+			background[i*(*board).w() + j] = (*board).gpc(i,j);
 		}
 	}
 
 	for (i = 0; i < n; i++) {
-		for (k = 0; k < board.h(); k++) {
-			for (l = 0; l < board.w(); l++) {
-				board.spc(k,l,background[k*board.w() + l]);
+		for (k = 0; k < (*board).h(); k++) {
+			for (l = 0; l < (*board).w(); l++) {
+				(*board).spc(k,l,background[k*(*board).w() + l]);
 			}
 		}
 		for (j = 0; j < dlen; j++) {
 			(*d[j]).draw();
 			(*d[j]).translate(dy, dx);
 		}
-		board.show();
+		(*board).show();
 		delay(wait);
 	}
 	

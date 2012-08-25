@@ -1,23 +1,17 @@
 #include "../Adafruit_WS2801/Adafruit_WS2801.h"
 #include "../Drawable/Drawable.h"
 #include "Alphanumeric.h"
+#include <string.h>
 
 // Constructor for alphanumeric
-Alphanumeric::Alphanumeric(Adafruit_WS2801& board, char* l, uint8_t yOff, uint8_t xOff, uint32_t c) : Drawable(board, yOff, xOff, getBBWidth(l), getBBHeight(l)) {
+Alphanumeric::Alphanumeric(Adafruit_WS2801* board, char* l, uint8_t yOff, uint8_t xOff, uint32_t c) : Drawable(board, yOff, xOff, getBBWidth(l), getBBHeight(l)) {
 	int w = getBBWidth(l);
 	int h = getBBHeight(l);
-
-	int ASCIICode;
-	if ((int) l[0] >= 97) {
-		ASCIICode = 65 + ((((int) l[0]) - 65) % 32); // To deal with lower case letters, to convert them to upper case
-	}
-	else
-		ASCIICode = (int) l[0];
 	
 	// Here we define all of the different letters
 	// Every case is defined by the ASCII code for the letter/number (but capitals only)
-	switch(ASCIICode) {
-		case 65:
+	switch(toupper(l[0])) {
+		case 'A':
 			Drawable(board, yOff, xOff, w, h);
 			spc(0, 1, c);
 			spc(1, 0, c);		//  #
@@ -30,7 +24,7 @@ Alphanumeric::Alphanumeric(Adafruit_WS2801& board, char* l, uint8_t yOff, uint8_
 			spc(4, 0, c);
 			spc(4, 2, c); 
 			break;
-		case 66:
+		case 'B':
 			Drawable(board, yOff, xOff, w, h);
 			spc(0, 0, c);
 			spc(0, 1, c);
@@ -62,7 +56,18 @@ int Alphanumeric::getBBWidth(char* l) {
 	}
 }
 
-
 int Alphanumeric::getBBHeight(char* l) {
 	return 5;
+}
+
+Drawable** Alphanumeric::alphanumericString(Adafruit_WS2801* board, char* text, uint8_t yOff, uint8_t xOff, uint32_t c) {
+	int i;
+	Drawable** textList;
+	textList = (Drawable**) malloc(strlen(text));
+	
+	for(i = 0; i < strlen(text); i++) {
+		textList[i] = new Alphanumeric(board, &text[i], yOff, xOff + i*(1 + getBBWidth(&text[i])), c);
+	}
+	
+	return textList;
 }
