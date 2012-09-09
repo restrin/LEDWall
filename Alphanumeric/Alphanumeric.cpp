@@ -62,11 +62,18 @@ int Alphanumeric::getBBHeight(char* l) {
 
 Drawable** Alphanumeric::alphanumericString(Adafruit_WS2801* board, char* text, uint8_t yOff, uint8_t xOff, uint32_t c) {
 	int i;
+	int offset = 0;
 	Drawable** textList;
 	textList = (Drawable**) malloc(strlen(text));
 	
 	for(i = 0; i < strlen(text); i++) {
-		textList[i] = new Alphanumeric(board, &text[i], yOff, xOff + i*(1 + getBBWidth(&text[i])), c);
+		// TODO: TEST HOW FUNCTION HANDLES TEXT WITH SPACES
+		if ((int) text[i] == 32)
+			offset += 3;
+		else {
+			textList[i] = new Alphanumeric(board, &text[i], yOff, xOff + offset, c);
+			offset += 1 + getBBWidth(&text[i]);
+		}
 	}
 	
 	return textList;

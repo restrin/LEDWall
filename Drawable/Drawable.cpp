@@ -11,7 +11,7 @@ Drawable::Drawable(Adafruit_WS2801* board, uint8_t yOff, uint8_t xOff, uint8_t w
 	basePoint[1] = xOff;
 	width = w;
 	height = h;
-	boundingBox = (uint32_t*) calloc(w * h, 4); // later I will figure out how to properly dynamically allocate/deallocate memory for multidimensional arrays
+	boundingBox = (uint32_t*) calloc(w * h, 4);
 }
 
 Drawable::~Drawable(void) {
