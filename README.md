@@ -1,10 +1,18 @@
 LEDWall
 =======
 
-Arduino sketches for LED Wall.
+Arduino/Processing sketches for LED Wall.
 
-NOTE: To run these sketches, you will likely need to use the Adafruit_WS2801 library, using
+To start, first upload LEDStream.pde arduino file to board, so that board is ready to accept serial data from processing sketches.
 
-#include "Adafruit_WS2801.h"
+Note:
+  Clock pin = 11, Data pin  = 13
+      
+If the connection was succcessful, the board should flash red, green, blue.
 
-at the top of the sketch. To avoid keeping those files in the same folder as the sketch for every sketch, move the "Adafruit_WS2801.h" and "Adafruit_WS2801.cpp" files to "~/Arduino/libraries/Adafruit_WS2801/", with ~ referring to the directory where the Arduino IDE was installed. 
+Use CommunicationTemplate.pde as a starting file for processing sketches, as it will handle sending the serial data to the board.
+CommunicationTemplate has a preview() method so that you can test out sketches without the board. If you are working without the board, comment out the line
+
+  port = new Serial(this, Serial.list()[0], 115200);
+  
+to avoid errors.
