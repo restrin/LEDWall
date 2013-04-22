@@ -29,8 +29,8 @@
 import java.awt.*;
 import java.awt.image.*;
 import processing.serial.*;
+import java.util.Random;
 import ddf.minim.*;
-import ddf.minim.analysis.*;
 
 // CONFIGURABLE PROGRAM CONSTANTS --------------------------------------------
 
@@ -122,6 +122,7 @@ static final int leds[][] = new int[][] {
 // GLOBAL VARIABLES ---- You probably won't need to modify any of this -------
 
 byte[]           serialData  = new byte[6 + leds.length * 3];
+byte[]           serialCopy  = new byte[6 + leds.length * 3];
 short[][]        ledColor    = new short[leds.length][3],
                  prevColor   = new short[leds.length][3];
 byte[][]         gamma       = new byte[256][3];
@@ -137,27 +138,24 @@ DisposeHandler   dh; // For disabling LEDs on exit
 
 int              w           = 18;
 int              h           = 11;
-int              bgc         = 0;
+
 int              iterCnt     = 0;
+TetrisGame       tg;
 
 Minim minim;
 AudioPlayer song;
-FFT fft;
-BeatDetect beat;
-BeatListener bl;
+
 // INITIALIZATION ------------------------------------------------------------
 
 void setup() {
   initialize();
   
   minim = new Minim(this);
-  song = minim.loadFile("C:/Users/Ron/Downloads/Paralyzer [With Lyrics] - Finger Eleven (1).mp3", 512);
-  song.play();
+  song = minim.loadFile("C:/Users/Ron/Downloads/Original Tetris theme (Tetris Soundtrack).mp3", 512);
+  song.loop();
   
-  fft = new FFT(song.bufferSize(), song.sampleRate());
-  beat = new BeatDetect(song.bufferSize(), song.sampleRate());
-  beat.setSensitivity(10);
-  bl = new BeatListener(beat, song);
+  tg = new TetrisGame();
+  
 }
 
 // Open and return serial connection to Arduino running LEDstream code.  This
@@ -211,37 +209,22 @@ Serial openPort() {
 
 void draw () {
   
-  fft.forward(song.mix);
+  tg.iterate();
   
-  int temp;
-  if (beat.isSnare()) {
-    bgc = 0;//((int) random(255 << 16 + 255 << 8 + 255));
-    temp = bgc;
-    bgc = ((temp >> 18) << 16) + (((temp >> 10) & 127) << 8) + (temp & 63);
-  }
-  
-  if (iterCnt % 2 == 0) {
-    
-  clearBackground(bgc);
-  
-  for(int i = 0; i < w; i++) {
-    drawVerticalLine(i, (int) (pow(min(fft.getBand(i)*2,75.0)/75.0, 0.75) * h));
-  }
-  
-  for(int i = 0; i < w; i++) {
-    spc(i, (int) (song.right.get(i)*10 + 5), 255 << 16);
-  }
-  }
   preview();
+  
+  iterCnt++;
   
   if(port != null) port.write(serialData); // Issue data to Arduino
   
-  println(frameRate); // How are we doing?
+//  println(frameRate); // How are we doing?
 
   // Copy LED color data to prior frame array for next pass
   arraycopy(ledColor, 0, prevColor, 0, ledColor.length);
-  
-  iterCnt++;
+}
+
+void keyPressed() {
+  tg.keyboardCallback(key); 
 }
 
 // HELPER FUNCTIONS ----------------------------------------------------------
@@ -249,7 +232,7 @@ void draw () {
 // Show live preview image(s)
 void preview() {
   color c;
-  long r,g,b;
+  int r,g,b;
   noStroke();
   for(int x = 0; x < w; x++) {
     for (int y = 0; y < h; y++) {
@@ -258,9 +241,9 @@ void preview() {
       b = serialData[3*(y*w + x) + 2 + 6];
       
       // Need to turn into unsigned value
-      c = color(r & 0x00000000ffffffffL,
-                g & 0x00000000ffffffffL,
-                b & 0x00000000ffffffffL);
+      c = color(r & 0xff,
+                g & 0xff,
+                b & 0xff);
       fill(c);
 
       if (y % 2 == 0) {
@@ -270,25 +253,6 @@ void preview() {
         rect((w-x-1)*20, y*20, 20, 20);
       }
     }
-  } 
-}
-
-// Draws a vertical line
-void drawVerticalLine(int x, int y) {
-  int c;
-  for (int i = 0; i <= y; i++) {
-/*
-    if (i < 3)
-      c = 255;
-    else {
-      if (3 <= i && i < 7) {
-        c = 255 << 8; 
-      }
-      else
-        c = 255 << 16;
-    }
-*/    
-    spc(x, h-1-i, 255);
   } 
 }
 
@@ -315,11 +279,34 @@ void spc(int x, int y, int c) {
   }
 }
 
+// Grabs pixel colour as 24 bit integer at position (x,y)
+// TODO: FIX
+int gpc(int x, int y) {
+  int r,g,b;
+  if (0 <= y && y < h && 0 <= x && x < w) {
+    if (y % 2 == 0) {
+      r = serialData[3*(y*w + x) + 6];
+      g = serialData[3*(y*w + x) + 1 + 6];
+      b = serialData[3*(y*w + x) + 2 + 6];
+    }
+    else {
+      r = serialData[6+3*(w*y + ((w - 1) - x))];
+      g = serialData[6+3*(w*y + ((w - 1) - x))+1];
+      b = serialData[6+3*(w*y + ((w - 1) - x))+2];
+    }
+    r &= 0xff;
+    g &= 0xff;
+    b &= 0xff;
+    return (r << 16) + (g << 8) + b;
+  } 
+  return -1;
+}
+
 // sets the background colour
 void clearBackground(int c) {
   for(int i = 0; i < w; i++) {
     for(int j = 0; j < h; j++) {
-      spc(i,j, c);
+      spc(i,j,c);
     }
   } 
 }
@@ -357,9 +344,7 @@ void initialize() {
   // Open serial port.  As written here, this assumes the Arduino is the
   // first/only serial device on the system.  If that's not the case,
   // change "Serial.list()[0]" to the name of the port to be used:
-
-  port = new Serial(this, Serial.list()[0], 115200);
-
+//  port = new Serial(this, Serial.list()[0], 115200);
   // Alternately, in certain situations the following line can be used
   // to detect the Arduino automatically.  But this works ONLY with SOME
   // Arduino boards and versions of Processing!  This is so convoluted
@@ -466,25 +451,396 @@ void initialize() {
   }
 }
 
-class BeatListener implements AudioListener
-{
-  private BeatDetect beat;
-  private AudioPlayer source;
+// TETRIS --------------------------------------------------------------------
+
+public class TetrisGame {
+  private TetrisBoard tb;
+  private TetrisPiece current = null;
+  private int speed = 20;
+  private int countdown = -1;
+  private int clearedRows = 0;
   
-  BeatListener(BeatDetect beat, AudioPlayer source)
-  {
-    this.source = source;
-    this.source.addListener(this);
-    this.beat = beat;
+  public TetrisGame() {
+    tb = new TetrisBoard();
+  } 
+ 
+  private TetrisPiece getNewPiece() {
+    int pieceCode = (int) random(7);
+    
+    switch(pieceCode) {
+      case 0:
+        return new IPiece(0, h/2-1, tb);
+      case 1:
+        return new JPiece(0, h/2-1, tb);
+      case 2:
+        return new LPiece(0, h/2-1, tb);
+      case 3:
+        return new OPiece(0, h/2-1, tb);
+      case 4:
+        return new SPiece(0, h/2-1, tb);
+      case 5:
+        return new TPiece(0, h/2-1, tb);
+      case 6:
+        return new ZPiece(0, h/2-1, tb);
+      default:
+        return null;
+    }
   }
   
-  void samples(float[] samps)
-  {
-    beat.detect(source.mix);
+  public void keyboardCallback(int code) {
+    switch(code) {
+      case 'a':
+        current.translatePiece(0,1);
+        break;
+      case 'd':
+        current.translatePiece(0,-1);
+        break;
+      case 's':
+        current.translatePiece(1,0);
+        break;
+      case ' ':
+        current.rotatePiece();
+        break;
+      default:
+        break;
+    }
   }
   
-  void samples(float[] sampsL, float[] sampsR)
-  {
-    beat.detect(source.mix);
+  private void displayToBoard() {
+    for(int i = 0; i < w; i++) {
+      for (int j = 0; j < h; j++) {
+        spc(i,j,tb.getColourInCell(i,j));
+      }
+    } 
+    
+    if (current != null)
+      current.drawPiece();
+  }
+  
+  public void iterate() {
+    ArrayList<Integer> completedRows = tb.completedRows();
+    for (Integer i: completedRows) {
+      println(i);
+      tb.removeRow(i);
+      displayToBoard();
+      tb.shiftRowsDown(i);
+      displayToBoard(); 
+    }
+    
+    while (current == null)
+      current = getNewPiece();
+    
+    if (iterCnt % speed == 0) {
+      current.translatePiece(1,0);
+    
+      if (tb.isPieceStuck(current) && countdown == -1) {
+        countdown = 1;
+      }
+      else {
+        if (tb.isPieceStuck(current) && countdown > 0) {
+          countdown--;
+        }
+        else {
+          if (tb.isPieceStuck(current) && countdown == 0) {
+            countdown--;
+            tb.addPieceToBoard(current);
+            current = null;  
+            clearedRows++;
+            speed = 20 - clearedRows/5;
+          }
+        }
+      }
+    }
+    displayToBoard();
   }
 }
+
+public class TetrisBoard {
+  int board[][];
+  
+  public TetrisBoard() {
+     board = new int[w][h];
+  }
+  
+  public int getColourInCell(int x, int y) {
+    return board[x][y];
+  }
+  
+  public void addPieceToBoard(TetrisPiece current) {
+    int[] piece = current.getPiece();
+    for (int i = 0; i < current.piece.length/2; i++) {
+      board[piece[2*i] + current.getX()][piece[2*i+1] + current.getY()] = current.getColour();
+    } 
+  }
+  
+  public void removeRow(int r) {
+    for(int i = 0; i < h; i++) {
+      // May include display call here...
+      board[r][i] = 0;
+    }
+  }
+  
+  // Shifts board down one row at row r
+  public void shiftRowsDown(int r) {
+     for(int i = r; i > 0; i--) {
+       for (int j = 0; j < h; j++) {
+         board[i][j] = board[i-1][j];
+       } 
+     }
+     for (int i = 0; i < h; i++) {
+         board[0][i] = 0; 
+     }
+  }
+  
+  // Checks if row r has been filled
+  public boolean completeRow(int r) {
+    for (int i = 0; i < h; i++) {
+      if (board[r][i] == 0)
+        return false;
+    }
+   
+    return true; 
+  }
+  
+  // Returns a list of all of the completed rows.
+  public ArrayList<Integer> completedRows() {
+    ArrayList<Integer> res = new ArrayList<Integer>();
+    for (int i = 0; i < w; i++) {
+      if (completeRow(i))
+        res.add(i);
+    } 
+    
+    return res;
+  }
+  
+  private boolean isPieceStuck(TetrisPiece p) {
+    int[] piece = p.getPiece();
+    int x,y;
+    for (int i = 0; i < piece.length/2; i++) {
+      x = p.getX() + piece[2*i] + 1;
+      y = p.getY() + piece[2*i+1];
+      
+      if (0 <= y && y < h) {
+        if (x >= w || board[x][y] != 0)
+          return true; 
+      }
+    }
+    return false;
+  }  
+  
+}
+
+public abstract class TetrisPiece {
+ 
+  protected TetrisBoard tb = null;
+  // Position of tetris piece on board (originally the bottom left)
+  protected int[] pos = new int[2];
+  // Contains coordinates of 4 squares offset from base point
+  protected int[] piece = new int[8];
+  protected int colour;
+  
+  public int[] getPiece() {
+    return piece; 
+  }
+  
+  public int[] getPos() {
+    return pos; 
+  }
+  
+  public int getX() {
+    return pos[0]; 
+  }
+  
+  public int getY() {
+    return pos[1]; 
+  }
+  
+  public int getColour() {
+    return colour; 
+  }
+  
+  public void drawPiece() {
+    for (int i = 0; i < piece.length/2; i++) {
+      spc(pos[0] + piece[2*i], pos[1] + piece[2*i+1], colour);
+    } 
+  }
+  
+  public void translatePiece(int x, int y) {
+    boolean valid = true;
+    
+    int i,j;
+    for (int k = 0; k < piece.length/2; k++) {
+      i = getX() + piece[2*k] + x;
+      j = getY() + piece[2*k+1] + y;
+      
+      if (!(0 <= i && i < w && 0 <= j && j < h) || tb.getColourInCell(i,j) != 0)
+        valid = false;
+    }
+    
+    if (valid) {
+      pos[0] += x;
+      pos[1] += y;
+    }
+  }
+  
+  // rotates the piece 90 deg ccw
+  public void rotatePiece() {
+    // TODO: FIX BOUNDARY ISSUES
+    int oldx, oldy;
+    for (int i = 0; i < piece.length/2; i++) {
+      oldx = piece[2*i];
+      oldy = piece[2*i+1];
+      piece[2*i] = -oldy;
+      piece[2*i+1] = oldx;
+    }
+    
+    int x,y;
+    for (int i = 0; i < piece.length/2; i++) {
+      x = getX() + piece[2*i];
+      y = getY() + piece[2*i+1];
+
+      if (y < 0)
+        translatePiece(0,-y+1);
+      if (y > h-1)
+        translatePiece(0,h-y-1);
+      if (x < 0)
+        translatePiece(0,-x+1);
+      if (x > w-1)
+        translatePiece(0,w-x-1);
+    }
+    
+  }
+}
+
+public class IPiece extends TetrisPiece{
+  public IPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0x00FFFF;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 2;
+    piece[5] = 0;
+    piece[6] = 3;
+    piece[7] = 0;
+  }
+}
+
+public class OPiece extends TetrisPiece{
+  public OPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0xFFFF00;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 0;
+    piece[3] = 1;
+    piece[4] = 1;
+    piece[5] = 0;
+    piece[6] = 1;
+    piece[7] = 1;
+  }
+}
+
+public class SPiece extends TetrisPiece{
+  public SPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0x00FF00;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 1;
+    piece[5] = 1;
+    piece[6] = 2;
+    piece[7] = 1;
+  }
+}
+
+public class ZPiece extends TetrisPiece{
+  public ZPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0xFF0000;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 1;
+    piece[5] = -1;
+    piece[6] = 2;
+    piece[7] = -1;
+  }
+}
+
+public class TPiece extends TetrisPiece{
+  public TPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0xBF00FF;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 2;
+    piece[5] = 0;
+    piece[6] = 1;
+    piece[7] = 1;
+  }
+}
+
+public class LPiece extends TetrisPiece{
+  public LPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0x0000FF;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 2;
+    piece[5] = 0;
+    piece[6] = 2;
+    piece[7] = -1;
+  }
+}
+
+public class JPiece extends TetrisPiece{
+  public JPiece(int x, int y, TetrisBoard tb) {
+    this.tb = tb;
+    
+    pos[0] = x;
+    pos[1] = y;
+    colour = 0xFFBF00;
+    
+    piece[0] = 0;
+    piece[1] = 0;
+    piece[2] = 1;
+    piece[3] = 0;
+    piece[4] = 2;
+    piece[5] = 0;
+    piece[6] = 2;
+    piece[7] = 1;
+  }
+}
+

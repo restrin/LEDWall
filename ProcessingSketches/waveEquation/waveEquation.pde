@@ -29,8 +29,6 @@
 import java.awt.*;
 import java.awt.image.*;
 import processing.serial.*;
-import ddf.minim.*;
-import ddf.minim.analysis.*;
 
 // CONFIGURABLE PROGRAM CONSTANTS --------------------------------------------
 
@@ -122,6 +120,7 @@ static final int leds[][] = new int[][] {
 // GLOBAL VARIABLES ---- You probably won't need to modify any of this -------
 
 byte[]           serialData  = new byte[6 + leds.length * 3];
+byte[]           serialCopy  = new byte[6 + leds.length * 3];
 short[][]        ledColor    = new short[leds.length][3],
                  prevColor   = new short[leds.length][3];
 byte[][]         gamma       = new byte[256][3];
@@ -137,27 +136,43 @@ DisposeHandler   dh; // For disabling LEDs on exit
 
 int              w           = 18;
 int              h           = 11;
-int              bgc         = 0;
 int              iterCnt     = 0;
 
-Minim minim;
-AudioPlayer song;
-FFT fft;
-BeatDetect beat;
-BeatListener bl;
+// Board with soluntion at time t
+float[][]          wb        = new float[w+2][h+2];
+// Board with solution at time t-1
+float[][]          wbc       = new float[w+2][h+2];
+// Board with solution at time t-2
+float[][]          wbcp      = new float[w+2][h+2];
+float dt                     = 0.05;
+float dx                     = 1./((float) w);
+float dy                     = 1./((float) h);
+float k                      = 0.1;
+int waveIterCnt              = 0;
+
 // INITIALIZATION ------------------------------------------------------------
 
 void setup() {
   initialize();
   
-  minim = new Minim(this);
-  song = minim.loadFile("C:/Users/Ron/Downloads/Paralyzer [With Lyrics] - Finger Eleven (1).mp3", 512);
-  song.play();
+  // Boundary Conditions
+  for(int i = 0; i < w+1; i++) {
+    wb[i][0] = 0;
+    wb[i][h+1] = 0;
+  }
   
-  fft = new FFT(song.bufferSize(), song.sampleRate());
-  beat = new BeatDetect(song.bufferSize(), song.sampleRate());
-  beat.setSensitivity(10);
-  bl = new BeatListener(beat, song);
+  for(int j = 0; j < h+1; j++) {
+    wb[0][j] = 0;
+    wb[w+1][j] = 0;
+  }
+  
+  // Initial Conditions to the wave equation
+  for(int i = 1; i < w+1; i++) {
+    for(int j = 1; j < h+1; j++) {
+      wb[i][j]  = exp(-50 * ((i*dx - 0.5)*(i*dx - 0.5)+(j*dy - 0.5)*(j*dy - 0.5)));
+      wbc[i][j] = exp(-50 * ((i*dx - 0.5)*(i*dx - 0.5)+(j*dy - 0.5)*(j*dy - 0.5)));
+    } 
+  }
 }
 
 // Open and return serial connection to Arduino running LEDstream code.  This
@@ -211,45 +226,65 @@ Serial openPort() {
 
 void draw () {
   
-  fft.forward(song.mix);
-  
-  int temp;
-  if (beat.isSnare()) {
-    bgc = 0;//((int) random(255 << 16 + 255 << 8 + 255));
-    temp = bgc;
-    bgc = ((temp >> 18) << 16) + (((temp >> 10) & 127) << 8) + (temp & 63);
-  }
-  
-  if (iterCnt % 2 == 0) {
-    
-  clearBackground(bgc);
-  
-  for(int i = 0; i < w; i++) {
-    drawVerticalLine(i, (int) (pow(min(fft.getBand(i)*2,75.0)/75.0, 0.75) * h));
-  }
-  
-  for(int i = 0; i < w; i++) {
-    spc(i, (int) (song.right.get(i)*10 + 5), 255 << 16);
-  }
-  }
   preview();
+  
+  if (iterCnt % 1 == 0)
+    iterate();
+    
+  writeSerial(wb, serialData);
   
   if(port != null) port.write(serialData); // Issue data to Arduino
   
-  println(frameRate); // How are we doing?
+  iterCnt++;
+
+//  println(frameRate); // How are we doing?
 
   // Copy LED color data to prior frame array for next pass
   arraycopy(ledColor, 0, prevColor, 0, ledColor.length);
-  
-  iterCnt++;
 }
 
 // HELPER FUNCTIONS ----------------------------------------------------------
 
+// Writes solution in form to be sent to board
+void writeSerial(float[][] arr, byte[] to) {
+
+  int col = (iterCnt/2) % 255;
+  
+  Colour c1, c2;
+  
+  if (col < 85) {
+    c1 = new Colour(col * 3, 255 - col * 3, 0);
+    c2 = new Colour(0, 255 - col * 3, col * 3);
+  } else if (col < 170) {
+   col -= 85;
+    c1 = new Colour(255 - col * 3, 0, col * 3);
+    c2 = new Colour(col * 3, 0, 255 - col * 3);
+  } else {
+   col -= 170; 
+    c1 = new Colour(0, col * 3, 255 - col * 3);
+    c2 = new Colour(255 - col * 3, col * 3, 0);
+  }
+  
+  Colour c;
+  for(int i = 1; i < w+1; i++) {
+    for (int j = 1; j < h+1; j++) {
+      if (arr[i][j] < 0)
+        c = new Colour(c1.returnInt());
+      else
+        c = new Colour(c2.returnInt());
+      c.colourScale(min(1., abs(arr[i][j])/1.5));
+      spc(i-1,j-1, c);
+     
+//      print(abs(arr[i][j]) + " ");
+    } 
+  }
+//  println();
+//  println();
+}
 // Show live preview image(s)
 void preview() {
   color c;
-  long r,g,b;
+  int r,g,b;
   noStroke();
   for(int x = 0; x < w; x++) {
     for (int y = 0; y < h; y++) {
@@ -258,9 +293,9 @@ void preview() {
       b = serialData[3*(y*w + x) + 2 + 6];
       
       // Need to turn into unsigned value
-      c = color(r & 0x00000000ffffffffL,
-                g & 0x00000000ffffffffL,
-                b & 0x00000000ffffffffL);
+      c = color(r & 0xff,
+                g & 0xff,
+                b & 0xff);
       fill(c);
 
       if (y % 2 == 0) {
@@ -270,25 +305,6 @@ void preview() {
         rect((w-x-1)*20, y*20, 20, 20);
       }
     }
-  } 
-}
-
-// Draws a vertical line
-void drawVerticalLine(int x, int y) {
-  int c;
-  for (int i = 0; i <= y; i++) {
-/*
-    if (i < 3)
-      c = 255;
-    else {
-      if (3 <= i && i < 7) {
-        c = 255 << 8; 
-      }
-      else
-        c = 255 << 16;
-    }
-*/    
-    spc(x, h-1-i, 255);
   } 
 }
 
@@ -315,13 +331,93 @@ void spc(int x, int y, int c) {
   }
 }
 
+void spc(int x, int y, Colour c) {
+  spc(x, y, c.returnInt()); 
+}
+
+// Grabs pixel colour as 24 bit integer at position (x,y)
+int gpc(int x, int y) {
+  int r,g,b;
+  if (0 <= y && y < h && 0 <= x && x < w) {
+    if (y % 2 == 0) {
+      r = serialData[3*(y*w + x) + 6];
+      g = serialData[3*(y*w + x) + 1 + 6];
+      b = serialData[3*(y*w + x) + 2 + 6];
+    }
+    else {
+      r = serialData[6+3*(w*y + ((w - 1) - x))];
+      g = serialData[6+3*(w*y + ((w - 1) - x))+1];
+      b = serialData[6+3*(w*y + ((w - 1) - x))+2];
+    }
+    r &= 0xff;
+    g &= 0xff;
+    b &= 0xff;
+    return (r << 16) + (g << 8) + b;
+  } 
+  return -1;
+}
+
 // sets the background colour
 void clearBackground(int c) {
   for(int i = 0; i < w; i++) {
     for(int j = 0; j < h; j++) {
-      spc(i,j, c);
+      spc(i,j,c);
     }
   } 
+}
+
+// SKETCH SPECIFIC FUNCTIONS -------------------------------------------------
+
+// Performs one iteration of solving the wave equation
+void iterate() {
+   // swap pointers
+   float[][] temp;
+   temp = wbc;
+   wbc = wbcp;
+   wbcp = temp;
+   
+   temp = wb;
+   wb = wbc;
+   wbc = temp;
+   
+   for(int i = 1; i < w+1; i++) {
+     for (int j = 1; j < h+1; j++) {
+       wb[i][j] = 2*wbc[i][j] - wbcp[i][j] 
+                    + k*dt*dt/(dx*dx) * (wbc[i+1][j] - 2*wbc[i][j] + wbc[i-1][j]
+                                         + wbc[i][j+1] - 2*wbc[i][j] + wbc[i][j-1])
+                  - source(i*dx,j*dy,dt*waveIterCnt++);
+     }
+   }
+   
+   for(int j = 0; j < h+2; j++) {
+     wb[0][j] = wb[2][j];
+     wb[w+1][j] = wb[w-1][j]; 
+   }
+   for(int i = 0; i < w+2; i++) {
+     wb[i][0] = wb[i][2];
+     wb[i][h+1] = wb[i][h-1]; 
+   }
+   
+/*
+  for(int i = 0; i < w+1; i++) {
+    wb[i][0] = wb[i][1];
+    wb[i][h+1] = wb[i][h];
+  }
+  
+  for(int j = 0; j < h+1; j++) {
+    wb[0][j] = wb[1][j];
+    wb[w+1][j] = wb[w][j];
+  }
+*/
+
+   waveIterCnt++;
+}
+
+// Source function
+float source(float x, float y, float t) {
+//  if (.3 < x && x < .7 && .3 < y && y < .7 && ((int) t) % 100 == 0)
+//    return 1;
+  return 0;
 }
 
 // CLEANUP -------------------------------------------------------------------
@@ -357,9 +453,7 @@ void initialize() {
   // Open serial port.  As written here, this assumes the Arduino is the
   // first/only serial device on the system.  If that's not the case,
   // change "Serial.list()[0]" to the name of the port to be used:
-
-  port = new Serial(this, Serial.list()[0], 115200);
-
+//  port = new Serial(this, Serial.list()[0], 115200);
   // Alternately, in certain situations the following line can be used
   // to detect the Arduino automatically.  But this works ONLY with SOME
   // Arduino boards and versions of Processing!  This is so convoluted
@@ -466,25 +560,60 @@ void initialize() {
   }
 }
 
-class BeatListener implements AudioListener
-{
-  private BeatDetect beat;
-  private AudioPlayer source;
+class Colour {
+  public int r;
+  public int g;
+  public int b;
+ 
+  public Colour(int r, int g, int b) {
+    this.r = r;
+    this.g = g;
+    this.b = b;
+  } 
   
-  BeatListener(BeatDetect beat, AudioPlayer source)
-  {
-    this.source = source;
-    this.source.addListener(this);
-    this.beat = beat;
+  public Colour(int c) {
+    this.r = (c >> 16) & 255;
+    this.g = (c >> 8) & 255;
+    this.b = c & 255; 
   }
   
-  void samples(float[] samps)
-  {
-    beat.detect(source.mix);
+  public void colourAdd(Colour o) {
+//    r *= 0.7;
+    r += 0.8*o.r;
+//    g *= 0.7;
+    g += 0.8*o.g;
+//    b *= 0.7;
+    b += 0.8*o.b;
   }
   
-  void samples(float[] sampsL, float[] sampsR)
-  {
-    beat.detect(source.mix);
+  public int colourNorm() {
+    return max(r,g,b); 
+  }
+  
+  public void colourAdd(Colour [] loc) {
+     for(int i = 0; i < loc.length; i++) {
+        r = (i+1)*r/(i+2) + loc[i].r/(i+2);
+        g = (i+1)*g/(i+2) + loc[i].g/(i+2);
+        b = (i+1)*b/(i+2) + loc[i].b/(i+2);
+     }
+  }
+  
+  public void colourAdd(ArrayList<Colour> loc) {
+     for(int i = 0; i < loc.size(); i++) {
+        r = ((i+1)*r/(1*(i+2)) + loc.get(i).r/(1*(i+2)));
+        g = ((i+1)*g/(1*(i+2)) + loc.get(i).g/(1*(i+2)));
+        b = ((i+1)*b/(1*(i+2)) + loc.get(i).b/(1*(i+2)));
+     }
+  }
+  
+  public void colourScale(float s) {
+    r *= s;
+    g *= s;
+    b *= s; 
+  }
+  
+  public int returnInt() {
+    return (r << 16) + (g << 8) + b;
   }
 }
+

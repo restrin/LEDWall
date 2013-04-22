@@ -120,6 +120,7 @@ static final int leds[][] = new int[][] {
 // GLOBAL VARIABLES ---- You probably won't need to modify any of this -------
 
 byte[]           serialData  = new byte[6 + leds.length * 3];
+byte[]           serialCopy  = new byte[6 + leds.length * 3];
 short[][]        ledColor    = new short[leds.length][3],
                  prevColor   = new short[leds.length][3];
 byte[][]         gamma       = new byte[256][3];
@@ -195,12 +196,6 @@ void draw () {
   
   preview();
   
-  spc(5,4, (168 << 16) + (120 << 8) + 53);
-  spc(5,5, (168 << 16) + (120 << 8) + 53);
-  
-  println(gpc(3,4));
-  println(gpc(4,4));
-  
   if(port != null) port.write(serialData); // Issue data to Arduino
   
 //  println(frameRate); // How are we doing?
@@ -267,16 +262,19 @@ int gpc(int x, int y) {
   int r,g,b;
   if (0 <= y && y < h && 0 <= x && x < w) {
     if (y % 2 == 0) {
-      r = serialData[3*(y*w + x) + 6] & 0xff;
-      g = serialData[3*(y*w + x) + 1 + 6] & 0xff;
-      b = serialData[3*(y*w + x) + 2 + 6] & 0xff;
+      r = serialData[3*(y*w + x) + 6];
+      g = serialData[3*(y*w + x) + 1 + 6];
+      b = serialData[3*(y*w + x) + 2 + 6];
     }
     else {
-      r = serialData[6+3*(w*y + ((w - 1) - x))] & 0xff;
-      g = serialData[6+3*(w*y + ((w - 1) - x))+1] & 0xff;
-      b = serialData[6+3*(w*y + ((w - 1) - x))+2] & 0xff;
+      r = serialData[6+3*(w*y + ((w - 1) - x))];
+      g = serialData[6+3*(w*y + ((w - 1) - x))+1];
+      b = serialData[6+3*(w*y + ((w - 1) - x))+2];
     }
-    return r << 16 + g << 8 + b;
+    r &= 0xff;
+    g &= 0xff;
+    b &= 0xff;
+    return (r << 16) + (g << 8) + b;
   } 
   return -1;
 }
@@ -288,6 +286,12 @@ void clearBackground(int c) {
       spc(i,j,c);
     }
   } 
+}
+
+// SKETCH SPECIFIC FUNCTIONS -------------------------------------------------
+
+void iterate() {
+   
 }
 
 // CLEANUP -------------------------------------------------------------------

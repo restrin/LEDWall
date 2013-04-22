@@ -29,6 +29,7 @@
 import java.awt.*;
 import java.awt.image.*;
 import processing.serial.*;
+import java.util.concurrent.ArrayBlockingQueue;
 import ddf.minim.*;
 import ddf.minim.analysis.*;
 
@@ -121,7 +122,10 @@ static final int leds[][] = new int[][] {
 
 // GLOBAL VARIABLES ---- You probably won't need to modify any of this -------
 
+byte[]           bg          = new byte[6 + leds.length * 3];
+byte[]           bgCopy      = new byte[6 + leds.length * 3];
 byte[]           serialData  = new byte[6 + leds.length * 3];
+byte[]           waveform    = new byte[6 + leds.length * 3];
 short[][]        ledColor    = new short[leds.length][3],
                  prevColor   = new short[leds.length][3];
 byte[][]         gamma       = new byte[256][3];
@@ -137,7 +141,6 @@ DisposeHandler   dh; // For disabling LEDs on exit
 
 int              w           = 18;
 int              h           = 11;
-int              bgc         = 0;
 int              iterCnt     = 0;
 
 Minim minim;
@@ -149,9 +152,17 @@ BeatListener bl;
 
 void setup() {
   initialize();
-  
+
+/*  
+  for (int i = 0; i < w; i++) {
+    for (int j = 0; j < h; j++) {
+      spc(i,j, (int) random((255 << 16) + (255 << 8) + 255), bg);
+    } 
+  }
+*/
+
   minim = new Minim(this);
-  song = minim.loadFile("C:/Users/Ron/Downloads/Paralyzer [With Lyrics] - Finger Eleven (1).mp3", 512);
+  song = minim.loadFile("C:/Users/Ron/Downloads/The Strokes - Reptilia.mp3", 512);
   song.play();
   
   fft = new FFT(song.bufferSize(), song.sampleRate());
@@ -210,28 +221,21 @@ Serial openPort() {
 // PER_FRAME PROCESSING ------------------------------------------------------
 
 void draw () {
-  
+ 
   fft.forward(song.mix);
+//  if (iterCnt % 10 == 0)
+    iterate();
   
-  int temp;
-  if (beat.isSnare()) {
-    bgc = 0;//((int) random(255 << 16 + 255 << 8 + 255));
-    temp = bgc;
-    bgc = ((temp >> 18) << 16) + (((temp >> 10) & 127) << 8) + (temp & 63);
+  if ((fft.getBand(1) > 20 || fft.getBand(15) > 15 || beat.isKick()) && iterCnt % 3 == 0) {
+    pulse((int) random(18), (int) random(11), (int) random((255 << 16) + (255 << 8) + 255));
   }
   
-  if (iterCnt % 2 == 0) {
-    
-  clearBackground(bgc);
+  copyArray(bg, serialData, false);
   
-  for(int i = 0; i < w; i++) {
-    drawVerticalLine(i, (int) (pow(min(fft.getBand(i)*2,75.0)/75.0, 0.75) * h));
-  }
+  approxWaveform();
   
-  for(int i = 0; i < w; i++) {
-    spc(i, (int) (song.right.get(i)*10 + 5), 255 << 16);
-  }
-  }
+  copyArray(waveform, serialData, true);
+  
   preview();
   
   if(port != null) port.write(serialData); // Issue data to Arduino
@@ -241,15 +245,23 @@ void draw () {
   // Copy LED color data to prior frame array for next pass
   arraycopy(ledColor, 0, prevColor, 0, ledColor.length);
   
-  iterCnt++;
+  iterCnt += 1;
 }
 
 // HELPER FUNCTIONS ----------------------------------------------------------
 
+void copyArray(byte[] from, byte[] to, boolean transparent) {
+   for(int i = 6; i < from.length; i++) {
+     if (from[i] != 0 || !transparent) {
+       to[i] = from[i]; 
+     }
+   }
+}
+
 // Show live preview image(s)
 void preview() {
   color c;
-  long r,g,b;
+  int r,g,b;
   noStroke();
   for(int x = 0; x < w; x++) {
     for (int y = 0; y < h; y++) {
@@ -258,9 +270,9 @@ void preview() {
       b = serialData[3*(y*w + x) + 2 + 6];
       
       // Need to turn into unsigned value
-      c = color(r & 0x00000000ffffffffL,
-                g & 0x00000000ffffffffL,
-                b & 0x00000000ffffffffL);
+      c = color(r & 0xff,
+                g & 0xff,
+                b & 0xff);
       fill(c);
 
       if (y % 2 == 0) {
@@ -273,25 +285,6 @@ void preview() {
   } 
 }
 
-// Draws a vertical line
-void drawVerticalLine(int x, int y) {
-  int c;
-  for (int i = 0; i <= y; i++) {
-/*
-    if (i < 3)
-      c = 255;
-    else {
-      if (3 <= i && i < 7) {
-        c = 255 << 8; 
-      }
-      else
-        c = 255 << 16;
-    }
-*/    
-    spc(x, h-1-i, 255);
-  } 
-}
-
 // Colours the pixel at (x,y) (with 0 based indexing) to colour c
 // c is 24-bit integer using RGB format
 // IMPORTANT: Our board's wiring isn't fantastic, and there is  bit corruption
@@ -300,28 +293,186 @@ void drawVerticalLine(int x, int y) {
 //            will flicker or be the wrong colour (it's usually the same ones each
 //            time. So change brightness accordingly.
 //            eg/ 32 = 100000 is bad, 31 = 111111 is good.
-void spc(int x, int y, int c) {
+void spc(int x, int y, int c, byte[] arr) {
   if (0 <= y && y < h && 0 <= x && x < w) {
     if (y % 2 == 0) {
-      serialData[6+3*(w*y + x)] = (byte) ((c >> 16) & 255);
-      serialData[6+3*(w*y + x)+1] = (byte) ((c >> 8) & 255);
-      serialData[6+3*(w*y + x)+2] = (byte) (c & 255);
+      arr[6+3*(w*y + x)] = (byte) ((c >> 16) & 255);
+      arr[6+3*(w*y + x)+1] = (byte) ((c >> 8) & 255);
+      arr[6+3*(w*y + x)+2] = (byte) (c & 255);
     }
     else {
-      serialData[6+3*(w*y + ((w - 1) - x))] = (byte) ((c >> 16) & 255);
-      serialData[6+3*(w*y + ((w - 1) - x))+1] = (byte) ((c >> 8) & 255);
-      serialData[6+3*(w*y + ((w - 1) - x))+2] = (byte) (c & 255);
+      arr[6+3*(w*y + ((w - 1) - x))] = (byte) ((c >> 16) & 255);
+      arr[6+3*(w*y + ((w - 1) - x))+1] = (byte) ((c >> 8) & 255);
+      arr[6+3*(w*y + ((w - 1) - x))+2] = (byte) (c & 255);
     }
   }
 }
 
-// sets the background colour
-void clearBackground(int c) {
-  for(int i = 0; i < w; i++) {
-    for(int j = 0; j < h; j++) {
-      spc(i,j, c);
+void spc(int x, int y, Colour c, byte[] arr) {
+  spc(x, y, c.returnInt(), arr); 
+}
+
+// Grabs pixel colour as 24 bit integer at position (x,y)
+int gpc(int x, int y, byte[] arr) {
+  int r,g,b;
+  if (0 <= y && y < h && 0 <= x && x < w) {
+    if (y % 2 == 0) {
+      r = arr[3*(y*w + x) + 6];
+      g = arr[3*(y*w + x) + 1 + 6];
+      b = arr[3*(y*w + x) + 2 + 6];
     }
+    else {
+      r = arr[6+3*(w*y + ((w - 1) - x))];
+      g = arr[6+3*(w*y + ((w - 1) - x))+1];
+      b = arr[6+3*(w*y + ((w - 1) - x))+2];
+    }
+    r &= 0xff;
+    g &= 0xff;
+    b &= 0xff;
+    return (r << 16) + (g << 8) + b;
   } 
+  return -1;
+}
+
+void clear(byte[] arr) {
+  for(int i = 0; i < arr.length; i++) {
+    arr[i] = 0;
+  } 
+}
+
+// SKETCH SPECIFIC FUNCTIONS -------------------------------------------------
+
+void approxWaveform() {
+  if (iterCnt % 2 == 0) {
+    
+  clear(waveform);
+    
+  Colour c = new Colour(255 << 16);
+  c.colourScale(2);
+
+  Colour o,cc;
+  
+  for(int i = 0; i < w; i++) {
+    int y = (int) (song.right.get(i)*10 + 5); 
+    spc(i, y, c, waveform);
+    
+    for (int j = 0; j < h; j++) {
+      if (y==j)
+        continue;
+      o = new Colour(gpc(i,j, serialData));
+      cc = new Colour(c.returnInt());
+      cc.colourScale(1/pow((y-j)*(y-j), 1));
+      o.colourAdd(cc);
+      spc(i,j, o, waveform);
+    } 
+  } 
+  }
+}
+
+// Performs one iteration, mixing a pixels adjacent colours
+void iterate() {
+   int new_i, new_j;
+   byte[][] dir = {{1,0},{0,1},{-1,0},{0,-1}};
+   
+   // Swap the byte buffers
+   byte [] temp = bg;
+   bg = bgCopy;
+   bgCopy = temp;
+   
+   Colour c;
+   ArrayList<Colour> loc;
+   for(int x = 0; x < w; x++) {
+     for(int y = 0; y < h; y++) {
+       
+       c = new Colour(gpc(x,y,bgCopy));
+       
+       loc = new ArrayList<Colour>();
+       
+       for (int k = 0; k < 4; k++) {
+         new_i = x + dir[k][0];
+         new_j = y + dir[k][1];
+         if (new_i >= w || new_j >= h || new_i < 0 || new_j < 0)
+           continue;
+         loc.add(new Colour(gpc(new_i, new_j, bgCopy)));
+       }
+       
+       c.colourAdd(loc);
+       if (c.colourNorm() > 200)
+         c.colourScale(0.7);
+       else {
+         if (c.colourNorm() > 50)
+           c.colourScale(0.8);
+         else
+           c.colourScale(1.05);
+       }
+       spc(x,y,c,bg);
+       
+     }
+   }
+   
+}
+
+void pulse(int x, int y, int colour) {
+//  byte[][] dir = {{1,0},{0,1},{-1,0},{0,-1}};
+
+  int i, j;
+  Colour c, cc,o;
+  
+  /*
+  // Map of already accessed pixels
+  byte[] m = new byte[w*h];
+  
+  // Set m's elements to 0
+  for (i = 0; i < w*h; i++)
+    m[i] = 0;
+  */
+  /*
+  // Initialize queue for BFS
+  ArrayBlockingQueue<Integer> q = new ArrayBlockingQueue<Integer>(2*w*h);
+  q.add(x);
+  q.add(y);
+  */
+  
+  c = new Colour(colour);
+  //c.colourScale(0.75);
+  spc(x,y,c,bg);
+  
+  for (i = 0; i < w; i++) {
+    for (j = 0; j < h; j++) {
+      o = new Colour(gpc(i, j,bgCopy));
+      cc = new Colour(c.returnInt());
+      cc.colourScale(1/pow((x-i)*(x-i) + (y-j)*(y-j), 0.75));
+      o.colourAdd(cc);
+      spc(i,j, o, bg);
+    } 
+  }
+  
+  /*
+  while (q.size() != 0) {
+     i = q.remove();
+     j = q.remove();
+     // Set element as accessed
+     m[j * w + i] = 1;
+     
+     
+     for (int k = 0; k < 4; k++) {
+       new_i = i + dir[k][0];
+       new_j = j + dir[k][1];
+       if (new_i >= w || new_j >= h || new_i < 0 || new_j < 0)
+         continue;
+       if (m[new_j * w + new_i] == 0) {
+         o = new Colour(gpc(new_i, new_j,bgCopy));
+         cc = new Colour(c.returnInt());
+         cc.colourScale(1/pow((x-new_i)*(x-new_i) + (y-new_j)*(y-new_j), 0.75));
+         o.colourAdd(cc);
+         spc(new_i,new_j, o, bg);
+         q.add(new_i);
+         q.add(new_j);
+         m[new_j * w + new_i] = 1;
+       }
+     } 
+  }
+  */
 }
 
 // CLEANUP -------------------------------------------------------------------
@@ -357,9 +508,7 @@ void initialize() {
   // Open serial port.  As written here, this assumes the Arduino is the
   // first/only serial device on the system.  If that's not the case,
   // change "Serial.list()[0]" to the name of the port to be used:
-
-  port = new Serial(this, Serial.list()[0], 115200);
-
+//  port = new Serial(this, Serial.list()[0], 115200);
   // Alternately, in certain situations the following line can be used
   // to detect the Arduino automatically.  But this works ONLY with SOME
   // Arduino boards and versions of Processing!  This is so convoluted
@@ -463,6 +612,63 @@ void initialize() {
     gamma[i][0] = (byte)(f * 255.0);
     gamma[i][1] = (byte)(f * 240.0);
     gamma[i][2] = (byte)(f * 220.0);
+  }
+}
+
+class Colour {
+  public int r;
+  public int g;
+  public int b;
+ 
+  public Colour(int r, int g, int b) {
+    this.r = r;
+    this.g = g;
+    this.b = b;
+  } 
+  
+  public Colour(int c) {
+    this.r = (c >> 16) & 255;
+    this.g = (c >> 8) & 255;
+    this.b = c & 255; 
+  }
+  
+  public void colourAdd(Colour o) {
+//    r *= 0.7;
+    r += 0.8*o.r;
+//    g *= 0.7;
+    g += 0.8*o.g;
+//    b *= 0.7;
+    b += 0.8*o.b;
+  }
+  
+  public int colourNorm() {
+    return max(r,g,b); 
+  }
+  
+  public void colourAdd(Colour [] loc) {
+     for(int i = 0; i < loc.length; i++) {
+        r = (i+1)*r/(i+2) + loc[i].r/(i+2);
+        g = (i+1)*g/(i+2) + loc[i].g/(i+2);
+        b = (i+1)*b/(i+2) + loc[i].b/(i+2);
+     }
+  }
+  
+  public void colourAdd(ArrayList<Colour> loc) {
+     for(int i = 0; i < loc.size(); i++) {
+        r = ((i+1)*r/(1*(i+2)) + loc.get(i).r/(1*(i+2)));
+        g = ((i+1)*g/(1*(i+2)) + loc.get(i).g/(1*(i+2)));
+        b = ((i+1)*b/(1*(i+2)) + loc.get(i).b/(1*(i+2)));
+     }
+  }
+  
+  public void colourScale(float s) {
+    r *= s;
+    g *= s;
+    b *= s; 
+  }
+  
+  public int returnInt() {
+    return (r << 16) + (g << 8) + b;
   }
 }
 

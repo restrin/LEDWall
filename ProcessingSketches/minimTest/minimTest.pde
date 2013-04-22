@@ -7,18 +7,22 @@ Minim minim;
 AudioPlayer song;
 AudioInput input;
 FFT fft;
+float[] buffer = new float[512];
+
+int m = 0;
 
 void setup()
 {
-size(1600, 900);
+size(512 , 200);
 
 minim = new Minim(this);
-song = minim.loadFile("Kalimba.mp3", 512);
+song = minim.loadFile("C:/Users/Ron/Downloads/Nine Inch Nails - The Hand That Feeds.mp3", 512);
 song.play();
 input = minim.getLineIn();
 
 // Trying fft
 fft = new FFT(song.bufferSize(), song.sampleRate());
+fft.linAverages(10);
 }
 
 void draw()
@@ -31,10 +35,24 @@ void draw()
   
   stroke(255, 0, 0, 128);
   
-  for(int i = 0; i < fft.specSize(); i++)
-  {
-    rect(i/18, height, i/18 + 18, height - fft.getBand(i/18)*4);
+  int num = 512;
+  
+  for(int i = 0; i < num; i++)
+  { 
+    if (fft.getBand(i) > m)
+      m = (int) fft.getBand(i);  
   }
+  
+  for(int i = 0; i < num; i++)
+  { 
+    rect(i*512/num, height, 512/num, height - pow(fft.getBand(i)/m, 0.25)*400);
+//    print(pow(fft.getBand(i)/m, 0.1) + " ");
+  }
+  
+//  println();
+//  println();
+  
+  m = 0;
   // we draw the waveform by connecting neighbor values with a line
   // we multiply each of the values by 50
   // because the values in the buffers are normalized
@@ -43,9 +61,9 @@ void draw()
   // will look more or less like a straight line.
   for(int i = 0; i < song.bufferSize() - 1; i++)
   {
-    for(int j = 0; j < 50; j++) {
-      line(3*i, 250+j + song.left.get(i)*250, 3*(i+1), 250+j + song.left.get(i+1)*250);
-    }
+//    for(int j = 0; j < 50; j++) {
+      line(3*i, 100 + song.left.get(i)*100, 3*(i+1), 100 + song.left.get(i+1)*100);
+//    }
   }
 }
 
